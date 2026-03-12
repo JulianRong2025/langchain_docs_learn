@@ -1,0 +1,40 @@
+# 这个应该是适用于chatgpt，deepseekV3.2的见7_3(安装了 langchain_deepseek，并把model_provider改为deepseek 后就能跑通了)
+import os
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+
+load_dotenv()
+model = init_chat_model(
+    model="deepseek-reasoner",
+    model_provider="deepseek",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url=os.getenv("DEEPSEEK_BASE_URL"),
+    temperature=0.1  # 推理类问题降低随机性，保证准确性
+)
+
+print("--- 智能体思考与回答 ---")
+
+for chunk in model.stream("天空是什么颜色？"):
+    # 检查是否存在 content_blocks 属性 (某些模型驱动会将其封装在此)
+    if hasattr(chunk, "content_blocks") and chunk.content_blocks:
+        for block in chunk.content_blocks:
+            
+            # 处理“推理/思考”块
+            if block["type"] == "reasoning" and (reasoning := block.get("reasoning")):
+                # 使用 flush=True 确保推理过程实时跳出
+                print(f"【推理】：{reasoning}", end="", flush=True)
+            
+            # 处理“工具调用”块
+            elif block["type"] == "tool_call_chunk":
+                print(f"\n【工具调用】：{block.get('name', '未知工具')}")
+            
+            # 处理“标准文本”块
+            elif block["type"] == "text":
+                # 当开始输出正文时，换个行以区分思考过程
+                print(f"\n【回答】：{block['text']}", end="", flush=True)
+            
+            # 其他未知类型
+            else:
+                pass 
+
+print("\n--- 传输结束 ---")

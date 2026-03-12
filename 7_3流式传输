@@ -1,0 +1,47 @@
+# 本以为可以适配deepseekV3.2思考模型。已经跑通了
+import os
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+
+load_dotenv()
+model = init_chat_model(
+    model="deepseek-reasoner",
+    model_provider="deepseek",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url=os.getenv("DEEPSEEK_BASE_URL"),
+    temperature=0
+)
+
+def run_stream_agent(query: str):
+    print(f"用户问题: {query}\n" + "="*50)
+    # 初始化状态标记，让打印更美观
+    has_started_thinking = False
+    has_started_content = False
+    # 开始流式传输
+    for chunk in model.stream(query):
+        # A. 处理推理/思考内容 (DeepSeek 特有)
+        reasoning = chunk.additional_kwargs.get("reasoning_content", "")
+        if reasoning:
+            if not has_started_thinking:
+                print("\n🧠 [思考中...]")
+                has_started_thinking = True
+            print(reasoning, end="", flush=True)
+
+        # B. 处理工具调用
+        if chunk.tool_call_chunks:
+            print("\n\n🛠️  [工具调用]")
+            for tc in chunk.tool_call_chunks:
+                print(f"正在准备调用: {tc.get('name')} (参数: {tc.get('args')})")
+
+        # C. 处理正文回答内容
+        if chunk.content:
+            if not has_started_content:
+                print("\n\n💬 [最终回答]")
+                has_started_content = True
+            print(chunk.content, end="", flush=True)
+
+    print("\n" + "="*50 + "\n任务结束")
+
+if __name__ == "__main__":
+    # 测试一个需要思考的问题
+    run_stream_agent("用三句话简单介绍一下：机器学习的基本概念")

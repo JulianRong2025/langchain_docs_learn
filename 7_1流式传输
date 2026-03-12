@@ -1,0 +1,22 @@
+import os
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage
+
+load_dotenv()
+model = init_chat_model(
+    model="deepseek-chat",
+    model_provider="openai",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url=os.getenv("DEEPSEEK_BASE_URL")
+)
+
+# 注意：在 LangChain 中，chunk 通常是 BaseMessageChunk 对象，使用 .content 获取文本内容
+print("开始流式输出：")
+# model.stream() 不支持传入单个 HumanMessage 对象，必须是「字符串」或「BaseMessage 列表」,所以msg 加上了【】
+msg = [HumanMessage(content="为什么鹦鹉有五颜六色的羽毛？")]
+for chunk in model.stream(msg):
+    # 如果不用 flush=True，所有 chunk.content 会暂存到缓冲区，直到全部接收完成才一次性显示
+    print(chunk.content, end="|", flush=True) 
+
+print("\n\n输出结束。")

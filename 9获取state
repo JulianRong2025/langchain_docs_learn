@@ -1,0 +1,102 @@
+# 这个文件类似 6通过中间件定义状态,没跑通、不想搞了
+import os
+from typing import Any, List, Dict
+from dotenv import load_dotenv
+# 加载环境变量
+load_dotenv()
+
+from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
+from langchain.chat_models import init_chat_model
+from langchain.tools import tool, ToolRuntime
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+
+# 定义状态架构（工具将从这里读取数据）
+class CustomState(BaseModel):
+    messages: List[BaseMessage] = Field(default_factory=list)
+    user_preferences: Dict[str, Any] = Field(default_factory=dict)
+
+@tool
+def get_last_user_message(runtime: ToolRuntime) -> str:
+    """获取用户最新的信息"""
+    state = runtime.state
+    # 如果 state 是方法则调用它，如果是属性则直接用
+    state_dict = state() if callable(state) else state
+    messages = state_dict.get["messages", []]
+
+    # 反向查找最后一条人类消息
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return message.content
+
+    return "未找到用户信息"
+
+# Access custom state fields访问自定义状态字段
+@tool
+def get_user_preference(pref_name: str, runtime: ToolRuntime) -> str:
+    """获取用户偏好."""
+    preferences = runtime.state.get("user_preferences", {})
+    return f"用户的 {pref_name} 偏好是: {preferences.get(pref_name, '未设置')}"
+
+tools = [get_last_user_message, get_user_preference]
+
+# 定义中间件（必须关联 state_schema）
+class StateMiddleware(AgentMiddleware):
+    state_schema = CustomState
+
+    def before_model(self, state: CustomState, runtime) -> dict[str, Any] | None:
+        # 安全地转换 state 为字典
+        if hasattr(state, "dict") and callable(state.dict):
+            s_dict = state.dict() # 必须带括号！
+        elif isinstance(state, dict):
+            s_dict = state
+        else:
+            s_dict = {}
+        
+        # 可以在这里根据 user_preferences 动态添加 SystemMessage
+        prefs = s_dict.get("user_preferences", {})
+        msgs = s_dict.get("messages", [])
+
+        if prefs:
+            instr = f"系统提示：当前用户偏好为 {prefs}。"
+            return {"messages": [SystemMessage(content=instr)] + msgs}
+        return None
+    
+    def after_model(self, response: Any, *args, **kwargs) -> Any:
+        # 提供此方法以防止框架调用失败。
+        return response
+
+model = init_chat_model(
+    model="openai:deepseek-chat",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url=os.getenv("DEEPSEEK_BASE_URL"),
+    temperature=0,
+)
+
+agent = create_agent(
+    model,
+    tools=tools,
+    middleware=[StateMiddleware()]
+)
+
+if __name__ == "__main__":
+    # 模拟输入：包含历史消息和自定义的偏好字段
+    inputs = {
+        "messages": [
+            HumanMessage(content="我喜欢极简主义风格。"),
+            HumanMessage(content="帮我分析一下我的偏好并告诉我，我上一句话说了什么？")
+        ],
+        "user_preferences": {
+            "style": "minimalist",
+            "language": "Chinese"
+        }
+    }
+
+    print("--- 智能体开始处理 ---")
+    # 智能体会因为感知到了 user_preferences 和消息历史，决定调用对应的工具
+    result = agent.invoke(inputs)
+    
+    # 输出结果
+    if "messages" in result:
+        print(f"\nAI 回复内容:\n{result['messages'][-1].content}")

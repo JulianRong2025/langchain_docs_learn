@@ -1,0 +1,43 @@
+import os
+from dotenv import load_dotenv
+# 加载环境变量
+load_dotenv()
+
+from langchain.chat_models import init_chat_model
+
+model = init_chat_model(
+    model="openai:deepseek-chat",
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url=os.getenv("DEEPSEEK_BASE_URL"),
+    temperature=0,
+)
+
+def get_weather(city: str) -> str:
+    """获取指定城市的天气信息"""
+    # 模拟调用天气API的返回结果
+    return f"{city}的天气：多云，温度15℃，湿度60%"
+
+# bind_tools() 是绑定工具的关键方法
+model_with_tools = model.bind_tools([get_weather])
+response = model_with_tools.invoke("What's the weather in Paris?")
+
+# response.tool_calls 是解析工具调用的核心字段
+for tool_call in response.tool_calls:
+    print(f"Tool: {tool_call['name']}")
+    print(f"Args: {tool_call['args']}")
+    print(f"ID: {tool_call['id']}")
+
+# 匹配工具名，执行对应的工具函数
+    if tool_call["name"] == "get_weather":
+        # 提取参数（city）并调用工具
+        city = tool_call["args"]["city"]
+        weather_result = get_weather(city)  # 实际调用工具
+
+# 打印最终的天气状况
+if weather_result: 
+    print(f"\n天气状况是：{weather_result}")
+else:
+    print("\n未调用到天气工具，无法获取天气状况")
+
+# 不能直接print(response["messages"][-1].content)
+# 绑定工具后的模型返回的 response 结构和普通模型完全不同 —— 它没有 messages 字段
