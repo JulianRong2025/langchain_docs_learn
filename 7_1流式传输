@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage
 load_dotenv()
 model = init_chat_model(
     model="deepseek-chat",
-    model_provider="openai",
+    model_provider="deepseek",
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url=os.getenv("DEEPSEEK_BASE_URL")
 )
@@ -17,6 +17,6 @@ print("开始流式输出：")
 msg = [HumanMessage(content="为什么鹦鹉有五颜六色的羽毛？")]
 for chunk in model.stream(msg):
     # 如果不用 flush=True，所有 chunk.content 会暂存到缓冲区，直到全部接收完成才一次性显示
-    print(chunk.content, end="|", flush=True) 
+    print(chunk.content, end="", flush=True) 
 
 print("\n\n输出结束。")
